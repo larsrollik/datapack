@@ -1,0 +1,154 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "datapack"
+dynamic = ["version"]
+description = "Lossless and visually-lossless compression of acquisition data (ephys, video, histology) with verification and manifests."
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { file = "LICENSE" }
+authors = [
+    { name = "Lars B. Rollik", email = "lars@rollik.me" },
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2",   # manifest + config models
+]
+
+[project.scripts]
+datapack = "datapack.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/MurineShiftWork/datapack"
+Documentation = "https://MurineShiftWork.github.io/datapack/"
+"Issue Tracker" = "https://github.com/MurineShiftWork/datapack/issues"
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "1.0.0"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/datapack/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datapack"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/datapack",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/CITATION.cff",
+    "/VERSION",
+]
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+
+[project.optional-dependencies]
+ephys = [
+    "mtscomp==1.0.2",  # IBL lossless ephys compression (.cbin/.ch); see ROADMAP D1/D6
+    "numpy>=2",        # mtscomp runtime dep; numpy 2.x verified
+    "tqdm",            # mtscomp imports it but its wheel does NOT declare it
+]
+histology = [
+    "tifffile>=2023",  # lossless TIFF read/write (BigTIFF, tiled, predictor)
+    "imagecodecs",     # codec backends (deflate, zstd) — manylinux wheels, no system libs
+    "numpy>=2",        # pixel-array verification
+]
+dev = [
+    "commitizen",
+    "pytest>=8",
+    "pytest-cov",
+    "pre-commit",
+    "mypy",
+    "datapack[ephys]",      # so the ephys engine is exercised in tests/CI
+    "datapack[histology]",  # so the histology engine + archive are exercised in tests/CI
+]
+docs = [
+    "mkdocs-material",
+    # Uncomment to enable auto-generated API reference from docstrings:
+    # "mkdocstrings[python]",
+]
+
+# ---------------------------------------------------------------------------
+# Commitizen
+# ---------------------------------------------------------------------------
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "commitizen"
+version = "1.0.0"
+version_files = ["VERSION"]
+tag_format = "v$version"
+update_changelog_on_bump = false
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=src/datapack --cov-report=term-missing --maxfail=5 --import-mode=importlib"
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "SIM",      # flake8-simplify
+    "PTH",      # flake8-pathlib
+    "TCH",      # flake8-type-checking
+    "PYI",      # flake8-pyi
+    "YTT",      # flake8-2020
+    "N",        # pep8-naming
+]
+ignore = [
+    "N818",  # keep expressive exception names (EngineNotAvailable) without an Error suffix
+]
+fixable = ["ALL"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.flake8-type-checking]
+# pydantic models evaluate annotations at runtime, so field-type imports must
+# stay at module scope — don't let TC rules push them into TYPE_CHECKING blocks.
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["TC001", "TC002", "TC003"]  # annotation-only imports are fine in tests
+
+# ---------------------------------------------------------------------------
+# Mypy
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true

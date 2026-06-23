@@ -1,0 +1,42 @@
+site_name: datapack
+site_description: Lossless and visually-lossless compression of acquisition data (ephys, video, histology) with verification and manifests.
+site_url: https://MurineShiftWork.github.io/datapack/
+repo_url: https://github.com/MurineShiftWork/datapack
+repo_name: MurineShiftWork/datapack
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: teal
+    accent: teal
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+# Uncomment to enable auto-generated API reference from docstrings.
+# Requires: mkdocstrings[python] in the docs optional-dependencies group.
+# plugins:
+#   - search
+#   - mkdocstrings:
+#       handlers:
+#         python:
+#           options:
+#             show_source: false
+#             show_root_heading: true
+#             heading_level: 3
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
