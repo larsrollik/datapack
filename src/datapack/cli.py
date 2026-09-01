@@ -123,7 +123,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--archive-raw",
         action="store_true",
         help="bundle stitchedImages/downsampled into one zip each (default: recompress "
-        "in place, browsable). Zipping adds no ratio — only one-object-per-dir bundling.",
+        "in place, browsable). Zipping adds no ratio — only one-object-per-dir "
+        "bundling.",
     )
     ss.add_argument("--codec", choices=["deflate", "zstd"], default="deflate")
     ss.add_argument("--overwrite", action="store_true")

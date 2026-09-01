@@ -292,7 +292,10 @@ def _probe_stream(ffprobe: str, path: Path) -> dict[str, Any]:
 
 @register_engine
 class VideoEngine(Engine):
-    """Visually-lossless HEVC re-encode of behavioural video (NVENC, libx265 fallback)."""
+    """Visually-lossless HEVC re-encode of behavioural video.
+
+    NVENC, with a libx265 fallback.
+    """
 
     modality = "video"
     name = "ffmpeg-hevc"

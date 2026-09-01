@@ -84,7 +84,8 @@ def pack_serial_section(
     Dispatch per top-level entry:
 
     - directories → **recompress TIFFs in place** to ``dest/<name>`` (browsable),
-      copying non-TIFF — including brainreg ``.npy`` tracks — **byte-for-byte verbatim**.
+      copying non-TIFF — including brainreg ``.npy`` tracks — **byte-for-byte
+      verbatim**.
       With ``archive_raw=True``, ``stitchedImages*``/``downsampled*`` dirs are instead
       **bundled** to ``dest/<name>.zip``.
     - top-level files (``recipe_*.yml``, ``FINISHED``, ``*_Log.txt``, ``*.mat``,
