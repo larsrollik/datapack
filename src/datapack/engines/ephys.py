@@ -47,11 +47,21 @@ class EphysMetaError(DatapackError):
 
 @dataclass(frozen=True)
 class StreamMeta:
-    """The three scalars mtscomp needs that a raw `.dat`/`.bin` has no header for."""
+    """What a raw `.dat`/`.bin` carries no header for.
+
+    The first three are what mtscomp needs to compress. ``bit_volts``/``units`` ride
+    along because this is the only place OE stream metadata is parsed, and consumers of
+    a *compressed* session have no other route to them: SpikeInterface and neo both
+    memmap ``continuous.dat`` during ``parse_header()`` and raise ``FileNotFoundError``
+    once it has become ``continuous.cbin``. Scaling ADC counts to µV therefore depends
+    on this being read here, at compression time.
+    """
 
     sample_rate: float
     n_channels: int
     dtype: str = OE_DTYPE
+    bit_volts: float | list[float] | None = None
+    units: str | None = None
 
 
 def _oebin_stream_meta(recording_dir: Path) -> dict[str, StreamMeta]:
@@ -63,12 +73,40 @@ def _oebin_stream_meta(recording_dir: Path) -> dict[str, StreamMeta]:
     data = json.loads(oebin.read_text())
     for stream in data.get("continuous", []):
         folder = str(stream.get("folder_name", "")).rstrip("/")
-        if folder:
-            meta[folder] = StreamMeta(
-                sample_rate=float(stream["sample_rate"]),
-                n_channels=int(stream["num_channels"]),
-            )
+        if not folder:
+            continue
+        chans = stream.get("channels") or []
+        gains = [float(c["bit_volts"]) for c in chans if c.get("bit_volts") is not None]
+        # Scalar when every channel shares a gain (the normal case), the full list
+        # otherwise, so a heterogeneous probe is never collapsed to a single number.
+        bit_volts = (gains[0] if len(set(gains)) == 1 else gains) if gains else None
+        meta[folder] = StreamMeta(
+            sample_rate=float(stream["sample_rate"]),
+            n_channels=int(stream["num_channels"]),
+            bit_volts=bit_volts,
+            units=(chans[0].get("units") if chans else None),
+        )
     return meta
+
+
+def oebin_stream_meta(recording_dir: Path | str) -> dict[str, StreamMeta]:
+    """Public: ``folder_name`` -> :class:`StreamMeta` from a recording's
+    ``structure.oebin``.
+
+    Metadata only; no sample data is opened, so this works on a compressed session where
+    ``continuous.dat`` has become ``continuous.cbin``.
+    """
+    return _oebin_stream_meta(Path(recording_dir))
+
+
+def session_stream_meta(session_dir: Path | str) -> dict[str, StreamMeta]:
+    """Same, but searches a whole session dir for its ``structure.oebin``."""
+    session_dir = Path(session_dir)
+    for oebin in sorted(session_dir.rglob("structure.oebin")):
+        meta = _oebin_stream_meta(oebin.parent)
+        if meta:
+            return meta
+    return {}
 
 
 def _stream_meta_for_dat(dat: Path) -> StreamMeta | None:

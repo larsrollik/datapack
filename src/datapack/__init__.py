@@ -40,6 +40,11 @@ from datapack.engines import (  # noqa: E402
     compress_oe_session,
     decompress_oe_session,
 )
+from datapack.engines.ephys import (  # noqa: E402
+    StreamMeta,
+    oebin_stream_meta,
+    session_stream_meta,
+)
 
 try:
     __version__ = version("datapack")
@@ -89,6 +94,9 @@ def compress_file(
 
 
 __all__ = [
+    "StreamMeta",
+    "oebin_stream_meta",
+    "session_stream_meta",
     "__version__",
     "compress_file",
     "compress_oe_session",
