@@ -22,7 +22,7 @@ import numpy as np  # noqa: E402
 def _make_dat(path: Path, *, n_samples: int, n_channels: int) -> bytes:
     rng = np.random.default_rng(0)
     arr = (rng.standard_normal((n_samples, n_channels)) * 50).astype("int16")
-    data = arr.tobytes()
+    data: bytes = arr.tobytes()
     path.write_bytes(data)
     return data
 
@@ -47,7 +47,7 @@ def test_ephys_compress_roundtrip(tmp_path: Path) -> None:
     assert rec.lossless is True and rec.ready_to_offload is True
     assert rec.verification is not None and rec.verification.ok
     assert rec.output_size and rec.output_size < rec.source_size  # actually smaller
-    assert 0 < rec.ratio < 1
+    assert rec.ratio is not None and 0 < rec.ratio < 1
     # mtscomp's stored sha1s captured for the offload-stage contract
     assert rec.extra["sha1_uncompressed"] == hashlib.sha1(raw).hexdigest()
     assert rec.extra["sha1_compressed"] == hashlib.sha1(cbin.read_bytes()).hexdigest()

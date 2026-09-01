@@ -11,10 +11,15 @@ from pathlib import Path
 import pytest
 
 from datapack.core import Job
-from datapack.engines.video import VideoEngine, nvenc_works, probe_ffmpeg
+from datapack.engines.video import (
+    FfmpegCapabilities,
+    VideoEngine,
+    nvenc_works,
+    probe_ffmpeg,
+)
 
 try:
-    _caps = probe_ffmpeg()
+    _caps: FfmpegCapabilities | None = probe_ffmpeg()
 except Exception:  # noqa: BLE001
     _caps = None
 

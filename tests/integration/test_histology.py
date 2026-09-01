@@ -56,8 +56,9 @@ def test_histology_engine_roundtrip(tmp_path: Path) -> None:
     rec = HistologyEngine().compress(Job(src=src, dst=dst, modality="histology"))
 
     assert dst.exists()
+    assert rec.verification is not None
     assert rec.lossless and rec.ready_to_offload and rec.verification.ok
-    assert 0 < rec.ratio < 1  # actually smaller
+    assert rec.ratio is not None and 0 < rec.ratio < 1  # actually smaller
     # output is still a valid TIFF decoding to identical pixels
     assert np.array_equal(tifffile.imread(dst), arr)
     # source untouched

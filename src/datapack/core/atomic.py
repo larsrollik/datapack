@@ -26,7 +26,7 @@ def _temp_for(dst: Path) -> Path:
 
 def atomic_write_many(
     dsts: Sequence[Path | str],
-    producer: Callable[[list[Path]], None],
+    producer: Callable[[list[Path]], object],
     *,
     overwrite: bool = False,
 ) -> list[Path]:
@@ -79,7 +79,7 @@ def atomic_write_many(
 
 def atomic_write(
     dst: Path | str,
-    producer: Callable[[Path], None],
+    producer: Callable[[Path], object],
     *,
     overwrite: bool = False,
 ) -> Path:
