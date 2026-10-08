@@ -13,7 +13,7 @@ permissions:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: "!startsWith(github.event.head_commit.message, 'bump:')"
     steps:
       - uses: actions/checkout@v6
@@ -33,7 +33,7 @@ jobs:
 
   test:
     name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: github.event_name == 'pull_request'
     strategy:
       fail-fast: false
@@ -61,7 +61,7 @@ jobs:
   # Aggregate gate — add as required status check in branch protection
   ci:
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [lint, test]
     if: always()
     steps:
