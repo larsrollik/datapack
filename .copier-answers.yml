@@ -1,6 +1,6 @@
 # Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
 _commit: v0.10.2
-_src_path: /mnt/fastdata/code/project_templates/templatepy
+_src_path: https://github.com/larsrollik/templatepy.git
 author_email: lars@rollik.me
 author_name: Lars B. Rollik
 github_repo: datapack
