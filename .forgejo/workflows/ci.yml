@@ -14,7 +14,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    if: "!startsWith(github.event.head_commit.message, 'bump:')"
+    if: ${{ github.server_url != 'https://github.com' && (!startsWith(github.event.head_commit.message, 'bump:')) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +34,7 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: ${{ github.server_url != 'https://github.com' && (github.event_name == 'pull_request') }}
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +63,7 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: always()
+    if: ${{ always() && github.server_url != 'https://github.com' }}
     steps:
       - name: Check required jobs
         run: |

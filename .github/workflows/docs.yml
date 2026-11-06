@@ -17,6 +17,7 @@ jobs:
   deploy:
     name: Deploy docs to GitHub Pages
     runs-on: ubuntu-26.04
+    if: ${{ github.server_url == 'https://github.com' }}
     steps:
       - uses: actions/checkout@v6
         with:

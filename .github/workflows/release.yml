@@ -13,7 +13,7 @@ jobs:
   release:
     name: Bump, build, publish
     runs-on: ubuntu-26.04
-    if: "!startsWith(github.event.head_commit.message, 'bump:')"
+    if: ${{ github.server_url == 'https://github.com' && (!startsWith(github.event.head_commit.message, 'bump:')) }}
     steps:
       - uses: actions/checkout@v6
         with:
