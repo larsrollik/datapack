@@ -23,6 +23,7 @@ import json
 import logging
 import shutil
 import tempfile
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -404,9 +405,35 @@ def compress_oe_session(
 
 
 def decompress_cbin(
-    cbin: Path | str, dst_dat: Path | str, *, overwrite: bool = False
+    cbin: Path | str,
+    dst_dat: Path | str,
+    *,
+    overwrite: bool = False,
+    verify: bool = False,
+    n_threads: int | None = None,
 ) -> Path:
-    """Restore a `.cbin`/`.ch` pair to a bit-exact flat `continuous.dat` (mtsdecomp)."""
+    """Restore a `.cbin`/`.ch` pair to a bit-exact flat `continuous.dat` (mtsdecomp).
+
+    ``verify`` controls mtscomp's ``check_after_decompress``, which defaults to True in
+    mtscomp and is OFF here. That pass re-reads the whole decompressed file and
+    re-decompresses every chunk to compare, one chunk at a time with no thread pool -- so it
+    costs roughly twice the decompress it is checking. Measured on a 384 ch / 4.6 h probe
+    stream: 1.5 h to decompress, then 2.9 h to verify what had just been written.
+
+    Leaving it off is not a loss of integrity cover, because the part that can actually rot
+    is still checked. zlib validates every chunk as it inflates, so a damaged ``.cbin``
+    raises during the decompress itself; ``check_after_compress`` already verified the
+    archive when it was written; and these sessions were confirmed byte-identical when they
+    were placed. What the pass uniquely catches is corruption of the freshly written output
+    between write and read, which is the filesystem's job. Pass ``verify=True`` where that
+    is worth two extra hours -- validating a new codec, or a suspect disk.
+
+    ``n_threads`` sizes mtscomp's decompress batches (one chunk per thread). mtscomp defaults
+    to ``mp.cpu_count()``, which on a cluster node is the machine's core count and NOT the
+    job's cgroup allocation: a worker holding 8 CPUs was running 32-chunk batches, which is
+    how a steady decompress came to wander between 8 and 13 s per batch. Callers under a
+    scheduler should pass their real allocation.
+    """
     _lazy_mtscomp()  # import guard + quiet logging
     from mtscomp import Reader
 
@@ -414,8 +441,12 @@ def decompress_cbin(
     ch = cbin.with_suffix(".ch")
     dst_dat = Path(dst_dat)
 
+    opts: dict[str, object] = {"check_after_decompress": bool(verify)}
+    if n_threads:
+        opts["n_threads"] = int(n_threads)
+
     def produce(tmp: Path) -> None:
-        reader = Reader()
+        reader = Reader(**opts)
         reader.open(str(cbin), str(ch))
         try:
             reader.tofile(str(tmp))
@@ -425,11 +456,48 @@ def decompress_cbin(
     return atomic_write(dst_dat, produce, overwrite=overwrite)
 
 
+def _stream_of(rel: Path) -> str | None:
+    """The continuous stream folder a session-relative path belongs to, or None.
+
+    OE nests streams as ``<Record Node>/experiment<i>/recording<j>/continuous/<stream>/...``.
+    Anything outside a ``continuous/`` directory -- ``structure.oebin``, ``events/``,
+    ``sync_messages.txt``, ``settings.xml`` -- belongs to no stream and is session-level.
+    """
+    parts = rel.parts
+    for i, part in enumerate(parts[:-1]):
+        if part == "continuous" and i + 1 < len(parts) - 1:
+            return parts[i + 1]
+    return None
+
+
+def _filter_oebin(src: Path, dst: Path, keep: set[str]) -> None:
+    """Copy ``structure.oebin``, narrowing its ``continuous`` list to ``keep``.
+
+    Required, not cosmetic. neo/SpikeInterface build a memmap per entry in that list when
+    the session is opened, so an entry whose ``continuous.dat`` was never expanded makes the
+    open fail rather than simply hiding the stream.
+
+    ``events`` is deliberately left whole: TTL directories are small, they are not what the
+    decompress is avoiding, and the barcode/sync routes read every line of them.
+    """
+    meta = json.loads(src.read_text())
+    entries = meta.get("continuous")
+    if isinstance(entries, list):
+        meta["continuous"] = [
+            e for e in entries if str(e.get("folder_name", "")).rstrip("/") in keep
+        ]
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(meta, indent=4))
+
+
 def decompress_oe_session(
     source: Path | str,
     dest: Path | str,
     *,
     overwrite: bool = False,
+    streams: Collection[str] | None = None,
+    verify: bool = False,
+    n_threads: int | None = None,
 ) -> SessionResult:
     """Restore a compressed OE session to a working tree (the round-trip of compress).
 
@@ -437,13 +505,38 @@ def decompress_oe_session(
     a bit-exact ``continuous.dat`` and copying every other file verbatim — so the
     result is a normal OE session ready for SpikeInterface/KS4 in a scratch/tmp
     location. Inverse of :func:`compress_oe_session`.
+
+    ``streams`` names the continuous stream folders to expand, e.g.
+    ``{"Neuropix-PXI-100.ProbeA"}``; ``None`` expands all of them, which is the original
+    behaviour and what LFP/EMG and a full restore want. Sorting wants one: a dual-probe
+    session expands ~384 GB per probe plus the DAQ stream, so sorting one probe was paying
+    for three streams and the two it never read dominated the job. Unselected streams are
+    reported in ``SessionResult.skipped``.
+
+    ``verify`` and ``n_threads`` are passed to :func:`decompress_cbin`; see there for why
+    verification is off by default and why a scheduled job should state its CPU allocation.
+
+    A stream name that matches nothing raises, rather than quietly producing a tree with no
+    traces in it -- the sorter would then refuse for a reason several steps from the cause.
     """
     source = Path(source).resolve()
     dest = Path(dest)
     if not source.is_dir():
         raise EphysMetaError(f"not a compressed OE session directory: {source}")
 
-    cbins = sorted(source.rglob("continuous.cbin"))
+    all_cbins = sorted(source.rglob("continuous.cbin"))
+    available = {c.parent.name for c in all_cbins}
+    if streams is None:
+        keep = set(available)
+    else:
+        keep = {str(s).rstrip("/") for s in streams}
+        if unknown := keep - available:
+            raise EphysMetaError(
+                f"no such stream(s) in {source}: {sorted(unknown)}; "
+                f"available: {sorted(available)}"
+            )
+
+    cbins = [c for c in all_cbins if c.parent.name in keep]
     raw_bytes = 0
     output_bytes = 0
     records: list[ManifestRecord] = []
@@ -451,25 +544,42 @@ def decompress_oe_session(
         rel = cbin.relative_to(source)
         raw_bytes += cbin.stat().st_size
         dat = dest / rel.parent / "continuous.dat"
-        out = decompress_cbin(cbin, dat, overwrite=overwrite)
+        out = decompress_cbin(
+            cbin, dat, overwrite=overwrite, verify=verify, n_threads=n_threads
+        )
         output_bytes += out.stat().st_size
 
     sidecars = 0
+    narrowed = streams is not None and keep != available
     for f in source.rglob("*"):
-        if f.is_file() and f.suffix not in {".cbin", ".ch"}:
-            target = dest / f.relative_to(source)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if target.exists() and not overwrite:
-                continue
-            shutil.copy2(f, target)
+        if not f.is_file() or f.suffix in {".cbin", ".ch"}:
+            continue
+        rel = f.relative_to(source)
+        # A skipped stream's own sidecars go with it. sample_numbers.npy and timestamps.npy
+        # are 4 GB each per stream, so copying them for streams nobody expanded is 16 GB of
+        # pure cost on a dual-probe session.
+        stream = _stream_of(rel)
+        if stream is not None and stream not in keep:
+            continue
+        target = dest / rel
+        if target.exists() and not overwrite:
+            continue
+        if narrowed and f.name == "structure.oebin":
+            _filter_oebin(f, target, keep)
             sidecars += 1
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, target)
+        sidecars += 1
 
     return SessionResult(
         source=source,
         dest=dest,
         records=records,
         sidecars_copied=sidecars,
-        skipped=[],
+        skipped=sorted(
+            c.parent.relative_to(source) for c in all_cbins if c.parent.name not in keep
+        ),
         raw_bytes=raw_bytes,
         output_bytes=output_bytes,
         n_streams=len(cbins),

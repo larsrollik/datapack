@@ -13,6 +13,7 @@ import pytest
 from datapack.cli import main
 from datapack.core import read_manifest
 from datapack.engines.ephys import (
+    EphysMetaError,
     compress_oe_session,
     decompress_oe_session,
 )
@@ -150,3 +151,77 @@ def test_oe_session_roundtrip_is_bit_exact(tmp_path: Path) -> None:
     # sidecars restored too (oebin, timestamps, sync_messages)
     assert (restored / "recording1" / "structure.oebin").exists()
     assert (restored / "recording1" / "sync_messages.txt").read_text() == "start"
+
+
+def _compressed(tmp_path: Path) -> tuple[Path, str, str]:
+    """A compressed two-stream session plus its stream folder names."""
+    src = _make_session(tmp_path / "session")
+    packed = tmp_path / "compressed"
+    compress_oe_session(src, packed)
+    return packed, "Neuropix-PXI-100.0", "Neuropix-PXI-100.1"
+
+
+def test_decompress_expands_only_the_named_stream(tmp_path: Path) -> None:
+    """Sorting one probe must not pay to expand the others (the seq216 cost)."""
+    packed, ap, lfp = _compressed(tmp_path)
+    out = tmp_path / "restored"
+
+    result = decompress_oe_session(packed, out, streams=[ap])
+
+    assert result.n_streams == 1
+    assert [d.name for d in result.skipped] == [lfp]
+    cont = next(out.rglob("continuous")).resolve()
+    assert (cont / ap / "continuous.dat").exists()
+    assert not (cont / lfp / "continuous.dat").exists()
+    # the skipped stream's own sidecars go with it -- these are 4 GB files in the real tree
+    assert not (cont / lfp / "timestamps.npy").exists()
+    assert (cont / ap / "timestamps.npy").exists()
+    # session-level sidecars are kept regardless of stream selection
+    assert next(out.rglob("sync_messages.txt")).read_text() == "start"
+
+
+def test_decompress_narrows_structure_oebin(tmp_path: Path) -> None:
+    """neo memmaps every oebin 'continuous' entry on open, so a stale one breaks the open."""
+    packed, ap, lfp = _compressed(tmp_path)
+    out = tmp_path / "restored"
+
+    decompress_oe_session(packed, out, streams=[ap])
+
+    meta = json.loads(next(out.rglob("structure.oebin")).read_text())
+    assert [e["folder_name"] for e in meta["continuous"]] == [ap + "/"]
+
+
+def test_decompress_all_streams_leaves_oebin_alone(tmp_path: Path) -> None:
+    """The default is the original behaviour: every stream, oebin copied verbatim."""
+    packed, ap, lfp = _compressed(tmp_path)
+    out = tmp_path / "restored"
+
+    result = decompress_oe_session(packed, out)
+
+    assert result.n_streams == 2
+    assert result.skipped == []
+    meta = json.loads(next(out.rglob("structure.oebin")).read_text())
+    assert [e["folder_name"] for e in meta["continuous"]] == [ap + "/", lfp + "/"]
+
+
+def test_decompress_unknown_stream_raises(tmp_path: Path) -> None:
+    """Refuse loudly; a tree with no traces makes the sorter refuse far from the cause."""
+    packed, ap, _ = _compressed(tmp_path)
+
+    with pytest.raises(EphysMetaError, match="no such stream"):
+        decompress_oe_session(packed, tmp_path / "restored", streams=["ProbeZ"])
+
+
+@pytest.mark.parametrize("verify", [False, True])
+def test_decompress_is_bit_exact_either_way(tmp_path: Path, verify: bool) -> None:
+    """verify=False skips mtscomp's re-read pass; it does not change what is written."""
+    src = _make_session(tmp_path / "session")
+    packed = tmp_path / "compressed"
+    out = tmp_path / f"restored_{verify}"
+    compress_oe_session(src, packed)
+
+    decompress_oe_session(packed, out, verify=verify)
+
+    for original in src.rglob("continuous.dat"):
+        restored = out / original.relative_to(src)
+        assert restored.read_bytes() == original.read_bytes()
