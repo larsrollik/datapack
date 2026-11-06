@@ -2,14 +2,17 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "datapack"
-version: "1.0.0"
+version: "1.1.0"
 repository-code: https://github.com/larsrollik/datapack
 url: https://github.com/larsrollik/datapack
-license: GPL-3.0
+# Not an SPDX identifier: the terms are custom (non-commercial research use only),
+# so CFF takes a URL rather than an id. Declaring GPL-3.0 here, as this file used to,
+# contradicted LICENSE and would have told a reader they could use this commercially.
+license-url: https://github.com/larsrollik/datapack/blob/main/LICENSE
 authors:
   - family-names: Rollik
     given-names: Lars
-    orcid: https://orcid.org/0000-0000-0000-0000  # replace with your ORCID
+    # orcid: add before the first tagged release; a placeholder id must not ship
 
 # Zenodo integration (optional):
 # 1. Enable the Zenodo webhook at zenodo.org/account/settings/github
