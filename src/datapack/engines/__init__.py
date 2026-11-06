@@ -3,7 +3,7 @@
 Importing this package registers the available engines via
 :func:`datapack.core.detect.register_engine`:
 
-- ``ephys`` (mtscomp; lossless) — Phase 1, lifted from dreamteam_etl's validated code.
+- ``ephys`` (mtscomp; lossless) — Phase 1, lifted from an earlier validated pipeline.
 - ``histology`` (tifffile/imagecodecs; lossless) — Phase 2.
 - ``video`` (ffmpeg hevc_nvenc) — Phase 3 (not yet implemented).
 

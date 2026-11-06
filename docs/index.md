@@ -5,7 +5,7 @@ Lossless and visually-lossless compression of acquisition data (ephys, video, hi
 ## Installation
 
 ```sh
-pip install datapack
+pip install datapack-neuro
 ```
 
 ## Usage
@@ -15,7 +15,7 @@ _Add usage examples here._
 ## Development
 
 ```sh
-git clone https://github.com/MurineShiftWork/datapack.git
+git clone https://github.com/larsrollik/datapack.git
 cd datapack
 uv sync --extra dev
 uv run pre-commit install --hook-type pre-commit --hook-type commit-msg

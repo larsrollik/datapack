@@ -162,7 +162,7 @@ def _compressed(tmp_path: Path) -> tuple[Path, str, str]:
 
 
 def test_decompress_expands_only_the_named_stream(tmp_path: Path) -> None:
-    """Sorting one probe must not pay to expand the others (the seq216 cost)."""
+    """Sorting one probe must not pay to expand the others (measured: two thirds wasted)."""
     packed, ap, lfp = _compressed(tmp_path)
     out = tmp_path / "restored"
 
