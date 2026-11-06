@@ -1,6 +1,6 @@
 """Histology engine — lossless TIFF recompression (tifffile + imagecodecs).
 
-Targets the lab's brainsaw/StitchIt serial-section datasets: ``serial_section/
+Targets brainsaw/StitchIt serial-section datasets: ``serial_section/
 <sample>/`` trees of uint16 grayscale TIFFs — big full-res sections under
 ``stitchedImages_*/<channel>/`` and multi-page downsampled stacks under
 ``downsampled_stacks/<µm>/`` — plus recipe/log/mat/ini metadata. Measured on real
@@ -8,7 +8,7 @@ data: a 152 MB section → 44 MB (71% saved), bit-exact.
 
 Each TIFF is re-encoded in place to a tiled BigTIFF with Deflate (zlib) + the
 horizontal-differencing predictor (universally readable; promote to ``zstd`` once
-the lab's downstream readers are confirmed — ROADMAP D4). Losslessness is proven
+downstream readers are confirmed). Losslessness is proven
 by decoding both files and comparing the pixel arrays (``np.array_equal``) — never
 by byte hashing, since identical pixels still differ at the TIFF byte level. The
 decoded-pixel SHA-256 is recorded in the manifest so integrity is re-provable

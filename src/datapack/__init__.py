@@ -1,6 +1,6 @@
 """datapack — verified compression of acquisition data (ephys, video, histology).
 
-Public API (stable; this is what consumers such as ``dreamteam_etl`` pin):
+Public API (stable; this is what downstream pipelines pin):
 
 - :func:`compress_file` — detect modality, run the engine, return a manifest record.
 - :class:`~datapack.core.manifest.ManifestRecord` (aliased ``CompressResult``).

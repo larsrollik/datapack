@@ -1,11 +1,11 @@
 """Ephys engine — lossless Neuropixel/OpenEphys compression via IBL mtscomp.
 
 The OpenEphys metadata helpers (``_oebin_stream_meta`` / ``_stream_meta_for_dat``)
-and the OE-tree-preserving compression approach are lifted from the validated
-``dreamteam_etl`` script and now owned here. ``dreamteam_etl`` becomes a consumer
+and the OE-tree-preserving compression approach are lifted from an earlier
+validated acquisition script and now owned here; that pipeline becomes a consumer
 of this engine.
 
-Integrity gate (ROADMAP D6): mtscomp's ``check_after_compress=True`` decompresses
+Integrity gate: mtscomp's ``check_after_compress=True`` decompresses
 the freshly written ``.cbin`` and byte-compares it to the source, raising on any
 mismatch. That *is* the bit-exact roundtrip — no separate sha256 pass is run. We
 additionally record mtscomp's own ``sha1_uncompressed`` / ``sha1_compressed``
@@ -190,7 +190,7 @@ class EphysEngine(Engine):
         chunk_duration_s: float = 1.0,
         n_threads: int = 8,
     ) -> None:
-        # NOTE: dreamteam_etl reported measurements at 120 s chunks while the
+        # NOTE: that earlier pipeline reported measurements at 120 s chunks while the
         # mtscomp API default is 1 s. We default to the API value explicitly;
         # callers tune via params. Larger chunks -> better ratio, coarser seek.
         self.chunk_duration_s = chunk_duration_s

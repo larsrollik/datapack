@@ -1,7 +1,7 @@
 """Video engine — visually-lossless H.265 re-encoding via ffmpeg (NVENC).
 
 Behavioural video (RPi camera ensemble, ~100 fps raw H.264) is re-encoded to HEVC
-for DLC/SLEAP. This is **visually lossless, not bit-exact** (ROADMAP D2): the .mp4
+for DLC/SLEAP. This is **visually lossless, not bit-exact**: the .mp4
 is the working form, consumed directly downstream — there is no decompress step
 (unlike the lossless ephys/histology round-trips).
 
@@ -38,11 +38,11 @@ RAW_H264_SUFFIXES = {".h264", ".264"}
 
 #: Named QP presets matching the jimbob DLC validation set (preset p7, g100).
 #: PROVISIONAL — the DLC/SLEAP tracking-accuracy validation is NOT finished; do not
-#: treat "small" (qp22) as confirmed-safe until that lands. See ROADMAP D2.
+#: treat "small" (qp22) as confirmed-safe until that lands.
 QP_PRESETS = {
     "safe": 18,  # maximally safe for tracking; least compression
     "balanced": 20,  # default — most of the gain, conservative
-    "small": 22,  # smallest; only after validating on the lab's own models
+    "small": 22,  # smallest; only after validating on your own tracking models
 }
 
 
