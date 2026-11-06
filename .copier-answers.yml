@@ -4,7 +4,7 @@ _src_path: /mnt/fastdata/code/project_templates/templatepy
 author_email: lars@rollik.me
 author_name: Lars B. Rollik
 github_repo: datapack
-github_username: MurineShiftWork
+github_username: larsrollik
 license_type: noncommercial
 private_repo_deps: false
 project_description: Lossless and visually-lossless compression of acquisition data

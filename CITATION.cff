@@ -3,8 +3,8 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "datapack"
 version: "1.0.0"
-repository-code: https://github.com/MurineShiftWork/datapack
-url: https://github.com/MurineShiftWork/datapack
+repository-code: https://github.com/larsrollik/datapack
+url: https://github.com/larsrollik/datapack
 license: GPL-3.0
 authors:
   - family-names: Rollik

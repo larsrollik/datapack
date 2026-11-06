@@ -30,10 +30,13 @@ mutates or deletes the raw data.
 ## Installation
 
 ```sh
-pip install datapack                 # core (CLI + histology-independent pieces)
-pip install "datapack[ephys]"        # + mtscomp, numpy, tqdm (ephys engine)
-pip install "datapack[histology]"    # + tifffile, imagecodecs, numpy (histology engine)
+pip install datapack-neuro                # core (CLI + histology-independent pieces)
+pip install "datapack-neuro[ephys]"       # + mtscomp, numpy, tqdm (ephys engine)
+pip install "datapack-neuro[histology]"   # + tifffile, imagecodecs, numpy (histology engine)
 ```
+
+The distribution is `datapack-neuro`; the import name is `datapack`. An unrelated
+`datapack` project already holds that name on PyPI.
 
 Video needs an **NVENC-enabled `ffmpeg`** on the system (not a Python dep). datapack
 resolves it from `--ffmpeg`, then `$DATAPACK_FFMPEG`, then `PATH`. On a cluster, assume
@@ -133,7 +136,7 @@ run's records to JSON-lines with `ManifestWriter` and read them back with `read_
 ## Development setup
 
 ```sh
-git clone https://github.com/MurineShiftWork/datapack.git
+git clone https://github.com/larsrollik/datapack.git
 cd datapack
 uv sync --extra dev
 uv run pre-commit install --hook-type pre-commit --hook-type commit-msg

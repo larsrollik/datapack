@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "datapack"
+name = "datapack-neuro"
 dynamic = ["version"]
 description = "Lossless and visually-lossless compression of acquisition data (ephys, video, histology) with verification and manifests."
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -20,9 +20,9 @@ dependencies = [
 datapack = "datapack.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/MurineShiftWork/datapack"
-Documentation = "https://MurineShiftWork.github.io/datapack/"
-"Issue Tracker" = "https://github.com/MurineShiftWork/datapack/issues"
+Homepage = "https://github.com/larsrollik/datapack"
+Documentation = "https://larsrollik.github.io/datapack/"
+"Issue Tracker" = "https://github.com/larsrollik/datapack/issues"
 
 # ---------------------------------------------------------------------------
 # Build

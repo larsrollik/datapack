@@ -1,8 +1,8 @@
 site_name: datapack
 site_description: Lossless and visually-lossless compression of acquisition data (ephys, video, histology) with verification and manifests.
-site_url: https://MurineShiftWork.github.io/datapack/
-repo_url: https://github.com/MurineShiftWork/datapack
-repo_name: MurineShiftWork/datapack
+site_url: https://larsrollik.github.io/datapack/
+repo_url: https://github.com/larsrollik/datapack
+repo_name: larsrollik/datapack
 edit_uri: edit/main/docs/
 
 theme:
