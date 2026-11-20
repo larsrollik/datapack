@@ -5,7 +5,8 @@ Importing this package registers the available engines via
 
 - ``ephys`` (mtscomp; lossless) — Phase 1, lifted from an earlier validated pipeline.
 - ``histology`` (tifffile/imagecodecs; lossless) — Phase 2.
-- ``video`` (ffmpeg hevc_nvenc) — Phase 3 (not yet implemented).
+- ``video``: raw ``.h264`` remux (MP4Box; bit-exact slices) or HEVC re-encode
+  (ffmpeg hevc_nvenc; visually lossless), Phase 3.
 
 Engine modules import their heavy, optional third-party deps lazily, so importing
 this package succeeds even when those deps are not installed.
@@ -31,6 +32,13 @@ from datapack.engines.histology import (
     unpack,
 )
 from datapack.engines.histology import verify_artifact as verify_histology_artifact
+from datapack.engines.remux import (
+    RemuxError,
+    framerate_for,
+    metadata_framerate,
+    remux_h264,
+    verify_remux,
+)
 from datapack.engines.video import VideoEngine, probe_ffmpeg
 
 __all__ = [
@@ -41,6 +49,11 @@ __all__ = [
     "verify_ephys_artifact",
     "VideoEngine",
     "probe_ffmpeg",
+    "RemuxError",
+    "framerate_for",
+    "metadata_framerate",
+    "remux_h264",
+    "verify_remux",
     "HistologyEngine",
     "TiffTreeResult",
     "compress_tiff_tree",

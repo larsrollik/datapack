@@ -13,7 +13,8 @@ mutates or deletes the raw data.
 | Modality | Lossless? | Engine | Typical saving | Notes |
 |---|---|---|---|---|
 | **Ephys** (Neuropixels / Open Ephys) | **lossless** (bit-exact) | IBL `mtscomp` (`.cbin`+`.ch`) | ~⅓ (NP1 ~59%) | round-trips back to identical `.dat` |
-| **Video** (behavioural, H.264) | **visually** lossless | `ffmpeg` HEVC (NVENC) | ~35–65% | re-encode for DLC/SLEAP; the `.mp4` is the working form |
+| **Video** (behavioural, e.g. `.avi`) | **visually** lossless | `ffmpeg` HEVC (NVENC) | ~35–65% | re-encode for DLC/SLEAP; the `.mp4` is the working form |
+| **Video** (raw Pi `.h264`) | **lossless** (identical coded slices) | `MP4Box` remux to `.mp4` | ~0% | archival form; frame rate from the acquisition metadata |
 | **Histology** (TIFF: brainsaw/StitchIt, brainreg) | **lossless** (bit-exact) | `tifffile` ADOBE_DEFLATE + predictor | ~⅔ (labels 40–75×) | files stay natively readable; tracks/metadata copied verbatim |
 
 **Design principles**
@@ -70,13 +71,43 @@ datapack oe-restore <compressed_session_dir> <work_dir> [--overwrite]
 
 ### Video
 ```sh
-# Visually-lossless HEVC re-encode (NVENC; libx265 CPU fallback only with --allow-cpu).
-datapack video <src.h264> <dst.mp4> [--quality safe|balanced|small] [--qp N] [--fps F] \
+# Raw .h264: remux to .mp4 without re-encoding (MP4Box), at the acquisition frame rate.
+# Anything else (e.g. .avi): visually-lossless HEVC re-encode (NVENC; libx265 CPU
+# fallback only with --allow-cpu).
+datapack video <src> <dst.mp4> [--mode auto|remux|encode] [--meta acq_meta.yaml|.json] \
+               [--remuxer auto|mp4box|ffmpeg] [--mp4box /path/to/MP4Box] \
+               [--quality safe|balanced|small] [--qp N] [--fps F] \
                [--ffmpeg /path/to/ffmpeg] [--allow-cpu] [--report manifest.jsonl]
 ```
-`--quality` presets (preset p7, GOP 100): `safe`=qp18, `balanced`=qp20 (default),
-`small`=qp22. **Provisional** pending the lab's DLC/SLEAP tracking validation; `--qp`
-overrides. Raw `.h264` has no timing, so `--fps` (default 100) is forced on input.
+`--mode auto` (default) picks by file type: raw `.h264`/`.264` is **remuxed**, every
+other video is **re-encoded**. `--mode encode` forces the HEVC re-encode of a raw `.h264`.
+
+**Remux.** The frame rate is read from the acquisition metadata next to the video, found
+from the video name without its `.h264` (and a following `.video`):
+`<base>.debug_acq_meta.yaml` (first non-null `framerate:` key) or `<base>.metadata.json`
+(top-level `framerate`); `--meta` names the file explicitly. No frame rate is an error:
+it is never guessed, and `--fps` is refused. The remux is `MP4Box -add <h264>:fps=<F>
+-new <mp4>`; ffmpeg stream copy is used only when MP4Box is missing (with a warning) or
+with `--remuxer ffmpeg`. The `.mp4` is accepted only when all of these hold, checked on
+the temp file before it is renamed into place:
+
+1. frame count: counted `.h264` packets equal the `.mp4` container frame count;
+2. size: the `.mp4` is within 1 % of the `.h264`;
+3. frame rate: the `.mp4` rate tag equals the metadata rate;
+4. coded slices: SHA-256 over all NAL units of type 1 and 5, in decode order, is equal
+   for the `.h264` and for the `.mp4` extracted to Annex-B (`-bsf:v h264_mp4toannexb`).
+   SPS, PPS, AUD and SEI may differ (framing only).
+
+The manifest record carries the frame rate and its metadata file, both slice hashes,
+every check and `verdict`. datapack never deletes the source: `ready_to_offload=True`
+with `verdict == "match"` is the evidence that the caller may delete the `.h264`. Frame
+times stay in the TTL/timestamp files next to the video. Resolve MP4Box via `--mp4box`,
+`$DATAPACK_MP4BOX` or PATH.
+
+**Re-encode.** `--quality` presets (preset p7, GOP 100): `safe`=qp18, `balanced`=qp20
+(default), `small`=qp22. **Provisional** pending the lab's DLC/SLEAP tracking
+validation; `--qp` overrides. A raw `.h264` forced through `--mode encode` has no timing,
+so `--fps` (default 100) is forced on input.
 
 ### Histology
 ```sh
@@ -124,6 +155,7 @@ from datapack.engines import (
     EphysEngine, HistologyEngine, VideoEngine,   # Engine.compress(Job) -> ManifestRecord
     compress_tiff_tree, pack, unpack, repack,    # histology tree + archive
     probe_ffmpeg,                                 # video capability probe
+    remux_h264, verify_remux, framerate_for,      # raw .h264 remux
 )
 from datapack.core import Job, ManifestRecord, ManifestWriter, read_manifest
 ```
@@ -149,7 +181,9 @@ uv run pytest
 ```
 
 Tests needing optional deps or a GPU skip automatically when unavailable. To exercise the
-real NVENC video path, point `$DATAPACK_FFMPEG` at an nvenc-enabled `ffmpeg`.
+real NVENC video path, point `$DATAPACK_FFMPEG` at an nvenc-enabled `ffmpeg`. The remux
+tests need an ffmpeg with an H.264 encoder (libx264 or libopenh264) and MP4Box (GPAC);
+the `.avi` test needs hevc_nvenc or libx265.
 
 ## Release workflow
 

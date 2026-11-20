@@ -24,7 +24,16 @@ class EphysProfile(BaseModel):
 
 
 class VideoProfile(BaseModel):
-    """ffmpeg HEVC, visually lossless."""
+    """Raw H.264 remux (bit-exact slices) or ffmpeg HEVC (visually lossless)."""
+
+    # Mode by file type: raw .h264 -> "remux", everything else -> "encode".
+    mode: str = "auto"
+    # Remux: MP4Box (GPAC) at the acquisition metadata frame rate; ffmpeg stream
+    # copy only when MP4Box is missing. No metadata frame rate -> error.
+    remuxer: str = "mp4box"
+    remux_fallback: str = "ffmpeg-copy"
+    remux_size_tolerance: float = 0.01
+    remux_meta_suffixes: tuple[str, ...] = (".debug_acq_meta.yaml", ".metadata.json")
 
     encoder: str = "hevc_nvenc"
     qp: int = 20  # qp18 = max-safe, qp22 = max-shrink; lock via DLC/SLEAP validation
