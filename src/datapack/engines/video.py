@@ -1,9 +1,16 @@
-"""Video engine — visually-lossless H.265 re-encoding via ffmpeg (NVENC).
+"""Video engine: raw H.264 remux, or visually-lossless H.265 re-encode via ffmpeg.
 
-Behavioural video (RPi camera ensemble, ~100 fps raw H.264) is re-encoded to HEVC
-for DLC/SLEAP. This is **visually lossless, not bit-exact**: the .mp4
-is the working form, consumed directly downstream — there is no decompress step
-(unlike the lossless ephys/histology round-trips).
+The mode is selected by file type (``mode="auto"``, the default):
+
+- raw ``.h264``/``.264`` (RPi camera ensemble) is **remuxed** to ``.mp4`` without
+  re-encoding, at the frame rate from the acquisition metadata, and verified on the
+  coded slices (:mod:`datapack.engines.remux`);
+- every other video (e.g. FLIR ``.avi``) is **re-encoded** to HEVC. This is
+  **visually lossless, not bit-exact**: the .mp4 is the working form, consumed
+  directly downstream; there is no decompress step.
+
+``mode="encode"`` forces the HEVC re-encode for a raw ``.h264`` too (``fps`` then sets
+its input rate, default 100); ``mode="remux"`` refuses anything but a raw ``.h264``.
 
 Deployment note (SLURM): we do NOT manage the GPU. The engine probes for a working
 nvenc-capable ffmpeg at runtime and, by default, **fails loudly if none is found**
@@ -30,11 +37,14 @@ from datapack.core.engine import Engine
 from datapack.core.errors import DatapackError, VerificationError
 from datapack.core.manifest import ManifestRecord
 from datapack.core.verify import VerifyResult
+from datapack.engines.remux import RAW_H264_SUFFIXES, framerate_for, remux_h264
+from datapack.engines.remux import verify_remux as _verify_remux
 
 if TYPE_CHECKING:
     from datapack.core.job import Job
 
-RAW_H264_SUFFIXES = {".h264", ".264"}
+#: Engine modes: ``auto`` picks ``remux`` for raw ``.h264`` and ``encode`` otherwise.
+VIDEO_MODES = ("auto", "remux", "encode")
 
 #: Named QP presets matching the jimbob DLC validation set (preset p7, g100).
 #: PROVISIONAL — the DLC/SLEAP tracking-accuracy validation is NOT finished; do not
@@ -60,6 +70,18 @@ def resolve_qp(quality: str | None, qp: int) -> int:
 
 class VideoError(DatapackError):
     """Raised when no usable encoder is available or ffmpeg fails."""
+
+
+def resolve_mode(mode: str, src: Path) -> str:
+    """Return ``"remux"`` or ``"encode"`` for a source, from ``mode`` and its type."""
+    if mode not in VIDEO_MODES:
+        raise VideoError(f"unknown video mode {mode!r}; choose from {VIDEO_MODES}")
+    is_raw = src.suffix.lower() in RAW_H264_SUFFIXES
+    if mode == "auto":
+        return "remux" if is_raw else "encode"
+    if mode == "remux" and not is_raw:
+        raise VideoError(f"{src}: remux mode takes a raw .h264 stream")
+    return mode
 
 
 @dataclass(frozen=True)
@@ -292,9 +314,11 @@ def _probe_stream(ffprobe: str, path: Path) -> dict[str, Any]:
 
 @register_engine
 class VideoEngine(Engine):
-    """Visually-lossless HEVC re-encode of behavioural video.
+    """Behavioural video: raw ``.h264`` remux, or visually-lossless HEVC re-encode.
 
-    NVENC, with a libx265 fallback.
+    The re-encode uses NVENC, with a libx265 fallback. ``name`` and ``lossless``
+    describe the re-encode; a remux record carries its own engine name and
+    ``lossless=True``.
     """
 
     modality = "video"
@@ -312,6 +336,9 @@ class VideoEngine(Engine):
         fps: float = 100.0,
         ffmpeg: str | None = None,
         allow_cpu: bool = False,
+        mode: str = "auto",
+        mp4box: str | None = None,
+        remuxer: str = "auto",
     ) -> None:
         self.qp = qp
         self.crf = crf
@@ -321,15 +348,23 @@ class VideoEngine(Engine):
         self.fps = fps
         self.ffmpeg = ffmpeg
         self.allow_cpu = allow_cpu
+        self.mode = mode
+        self.mp4box = mp4box
+        self.remuxer = remuxer
+
+    def _mode(self, job: Job) -> str:
+        return resolve_mode(str(job.params.get("mode") or self.mode), job.src)
 
     def compress(self, job: Job) -> ManifestRecord:
+        if self._mode(job) == "remux":
+            return self._remux(job)
         p = job.params
         qp = resolve_qp(p.get("quality"), int(p.get("qp", self.qp)))
-        fps = float(p.get("fps", self.fps))
+        fps = float(p.get("fps") or self.fps)
         allow_cpu = bool(p.get("allow_cpu", self.allow_cpu))
         overwrite = bool(p.get("overwrite", False))
 
-        caps = probe_ffmpeg(p.get("ffmpeg", self.ffmpeg))
+        caps = probe_ffmpeg(p.get("ffmpeg") or self.ffmpeg)
         encoder = select_encoder(caps, allow_cpu=allow_cpu)
         is_raw = job.src.suffix.lower() in RAW_H264_SUFFIXES
 
@@ -368,6 +403,7 @@ class VideoEngine(Engine):
             engine=self.name,
             engine_version=caps.version,
             params={
+                "mode": "encode",
                 "encoder": encoder,
                 "qp": qp,
                 "crf": int(p.get("crf", self.crf)),
@@ -393,8 +429,33 @@ class VideoEngine(Engine):
             },
         )
 
+    def _remux(self, job: Job) -> ManifestRecord:
+        p = job.params
+        if p.get("fps") is not None:
+            raise VideoError(
+                "remux takes the frame rate from the acquisition metadata; fps= "
+                "applies to mode='encode' only"
+            )
+        caps = probe_ffmpeg(p.get("ffmpeg") or self.ffmpeg)
+        return remux_h264(
+            job,
+            ffmpeg=caps.ffmpeg,
+            ffprobe=caps.ffprobe,
+            ffmpeg_version=caps.version,
+            mp4box=p.get("mp4box") or self.mp4box,
+            remuxer=str(p.get("remuxer") or self.remuxer),
+            meta=p.get("meta"),
+            overwrite=bool(p.get("overwrite", False)),
+            tool_version=_datapack_version(),
+        )
+
     def verify(self, job: Job) -> VerifyResult:
-        caps = probe_ffmpeg(job.params.get("ffmpeg", self.ffmpeg))
+        caps = probe_ffmpeg(job.params.get("ffmpeg") or self.ffmpeg)
+        if self._mode(job) == "remux":
+            fps, _ = framerate_for(job.src, job.params.get("meta"))
+            return _verify_remux(
+                job.src, job.dst, fps=fps, ffmpeg=caps.ffmpeg, ffprobe=caps.ffprobe
+            )
         is_raw = job.src.suffix.lower() in RAW_H264_SUFFIXES
         return self._verify(caps, job.src, job.dst, is_raw=is_raw)
 

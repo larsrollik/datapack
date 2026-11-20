@@ -89,9 +89,33 @@ def _build_parser() -> argparse.ArgumentParser:
     r.add_argument("--overwrite", action="store_true")
     r.set_defaults(func=_cmd_oe_restore)
 
-    v = sub.add_parser("video", help="visually-lossless HEVC re-encode (NVENC)")
-    v.add_argument("source", type=Path, help="video file (e.g. .h264)")
+    v = sub.add_parser(
+        "video",
+        help="raw .h264 remux to .mp4, or visually-lossless HEVC re-encode (NVENC)",
+    )
+    v.add_argument("source", type=Path, help="video file (.h264, .avi, ...)")
     v.add_argument("dest", type=Path, help="output .mp4")
+    v.add_argument(
+        "--mode",
+        choices=["auto", "remux", "encode"],
+        default="auto",
+        help="auto (default): remux raw .h264 without re-encoding, re-encode "
+        "anything else to HEVC; encode: force the HEVC re-encode",
+    )
+    v.add_argument(
+        "--meta",
+        type=Path,
+        help="remux: acquisition metadata file holding the frame rate (default: "
+        "<base>.debug_acq_meta.yaml or <base>.metadata.json next to the video)",
+    )
+    v.add_argument(
+        "--remuxer",
+        choices=["auto", "mp4box", "ffmpeg"],
+        default="auto",
+        help="remux tool: MP4Box (GPAC), falling back to ffmpeg stream copy "
+        "only when MP4Box is missing",
+    )
+    v.add_argument("--mp4box", help="path to MP4Box (or $DATAPACK_MP4BOX)")
     v.add_argument(
         "--qp", type=int, default=20, help="constqp value (18 safe..22 small)"
     )
@@ -101,7 +125,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="named QP preset (safe=18, balanced=20, small=22); overrides --qp. "
         "PROVISIONAL pending DLC validation",
     )
-    v.add_argument("--fps", type=float, default=100.0, help="forced fps for raw .h264")
+    v.add_argument(
+        "--fps",
+        type=float,
+        help="encode: forced input fps for raw .h264 (default 100); not accepted "
+        "for a remux, which takes the metadata frame rate",
+    )
     v.add_argument(
         "--ffmpeg", help="path to an nvenc-enabled ffmpeg (or $DATAPACK_FFMPEG)"
     )
@@ -251,11 +280,15 @@ def _cmd_video(args: argparse.Namespace) -> int:
         args.dest,
         modality="video",
         params={
+            "mode": args.mode,
             "qp": args.qp,
             "quality": args.quality,
             "fps": args.fps,
             "ffmpeg": args.ffmpeg,
             "allow_cpu": args.allow_cpu,
+            "meta": args.meta,
+            "remuxer": args.remuxer,
+            "mp4box": args.mp4box,
         },
     )
     if args.report:
@@ -263,6 +296,14 @@ def _cmd_video(args: argparse.Namespace) -> int:
     saved = record.saved_fraction
     saved_str = f"{saved:.1%} saved" if saved is not None else "ratio n/a"
     v = record.verification
+    if record.params.get("mode") == "remux":
+        print(
+            f"ok: {args.source} -> {record.output_path} (remux at "
+            f"{record.params['fps']:g} fps from {record.params['fps_source']}; "
+            f"remuxer={record.extra.get('remuxer')}, "
+            f"verdict={record.extra.get('verdict')})"
+        )
+        return 0
     fc = v.details.get("frame_count_match") if v else None
     print(
         f"ok: {args.source} -> {record.output_path} ({saved_str}; "
