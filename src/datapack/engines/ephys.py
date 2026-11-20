@@ -23,11 +23,10 @@ import json
 import logging
 import shutil
 import tempfile
-from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from datapack.core.atomic import atomic_write, atomic_write_many
 from datapack.core.detect import register_engine
@@ -36,6 +35,9 @@ from datapack.core.errors import DatapackError
 from datapack.core.job import Job
 from datapack.core.manifest import ManifestRecord, ManifestWriter
 from datapack.core.verify import VerifyResult
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 # OpenEphys `continuous.dat` is always signed 16-bit little-endian.
 OE_DTYPE = "int16"
@@ -416,23 +418,23 @@ def decompress_cbin(
 
     ``verify`` controls mtscomp's ``check_after_decompress``, which defaults to True in
     mtscomp and is OFF here. That pass re-reads the whole decompressed file and
-    re-decompresses every chunk to compare, one chunk at a time with no thread pool -- so it
-    costs roughly twice the decompress it is checking. Measured on a 384 ch / 4.6 h probe
-    stream: 1.5 h to decompress, then 2.9 h to verify what had just been written.
+    re-decompresses every chunk to compare, one chunk at a time with no thread pool --
+    so it costs roughly twice the decompress it is checking. Measured on a 384 ch / 4.6
+    h probe stream: 1.5 h to decompress, then 2.9 h to verify what had just been
+    written. Leaving it off is not a loss of integrity cover, because the part that can
+    actually rot is still checked. zlib validates every chunk as it inflates, so a
+    damaged ``.cbin`` raises during the decompress itself; ``check_after_compress``
+    already verified the archive when it was written; and these sessions were confirmed
+    byte-identical when they were placed. What the pass uniquely catches is corruption
+    of the freshly written output between write and read, which is the filesystem's job.
+    Pass ``verify=True`` where that is worth two extra hours -- validating a new codec,
+    or a suspect disk.
 
-    Leaving it off is not a loss of integrity cover, because the part that can actually rot
-    is still checked. zlib validates every chunk as it inflates, so a damaged ``.cbin``
-    raises during the decompress itself; ``check_after_compress`` already verified the
-    archive when it was written; and these sessions were confirmed byte-identical when they
-    were placed. What the pass uniquely catches is corruption of the freshly written output
-    between write and read, which is the filesystem's job. Pass ``verify=True`` where that
-    is worth two extra hours -- validating a new codec, or a suspect disk.
-
-    ``n_threads`` sizes mtscomp's decompress batches (one chunk per thread). mtscomp defaults
-    to ``mp.cpu_count()``, which on a cluster node is the machine's core count and NOT the
-    job's cgroup allocation: a worker holding 8 CPUs was running 32-chunk batches, which is
-    how a steady decompress came to wander between 8 and 13 s per batch. Callers under a
-    scheduler should pass their real allocation.
+    ``n_threads`` sizes mtscomp's decompress batches (one chunk per thread). mtscomp
+    defaults to ``mp.cpu_count()``, which on a cluster node is the machine's core count
+    and NOT the job's cgroup allocation: a worker holding 8 CPUs was running 32-chunk
+    batches, which is how a steady decompress came to wander between 8 and 13 s per
+    batch. Callers under a scheduler should pass their real allocation.
     """
     _lazy_mtscomp()  # import guard + quiet logging
     from mtscomp import Reader
@@ -459,9 +461,11 @@ def decompress_cbin(
 def _stream_of(rel: Path) -> str | None:
     """The continuous stream folder a session-relative path belongs to, or None.
 
-    OE nests streams as ``<Record Node>/experiment<i>/recording<j>/continuous/<stream>/...``.
-    Anything outside a ``continuous/`` directory -- ``structure.oebin``, ``events/``,
-    ``sync_messages.txt``, ``settings.xml`` -- belongs to no stream and is session-level.
+    OE nests streams as ``<Record
+    Node>/experiment<i>/recording<j>/continuous/<stream>/...``. Anything outside a
+    ``continuous/`` directory -- ``structure.oebin``, ``events/``,
+    ``sync_messages.txt``, ``settings.xml`` -- belongs to no stream and is
+    session-level.
     """
     parts = rel.parts
     for i, part in enumerate(parts[:-1]):
@@ -472,13 +476,11 @@ def _stream_of(rel: Path) -> str | None:
 
 def _filter_oebin(src: Path, dst: Path, keep: set[str]) -> None:
     """Copy ``structure.oebin``, narrowing its ``continuous`` list to ``keep``.
-
-    Required, not cosmetic. neo/SpikeInterface build a memmap per entry in that list when
-    the session is opened, so an entry whose ``continuous.dat`` was never expanded makes the
-    open fail rather than simply hiding the stream.
-
-    ``events`` is deliberately left whole: TTL directories are small, they are not what the
-    decompress is avoiding, and the barcode/sync routes read every line of them.
+    Required, not cosmetic. neo/SpikeInterface build a memmap per entry in that list
+    when the session is opened, so an entry whose ``continuous.dat`` was never expanded
+    makes the open fail rather than simply hiding the stream. ``events`` is deliberately
+    left whole: TTL directories are small, they are not what the decompress is avoiding,
+    and the barcode/sync routes read every line of them.
     """
     meta = json.loads(src.read_text())
     entries = meta.get("continuous")
@@ -509,15 +511,15 @@ def decompress_oe_session(
     ``streams`` names the continuous stream folders to expand, e.g.
     ``{"Neuropix-PXI-100.ProbeA"}``; ``None`` expands all of them, which is the original
     behaviour and what LFP/EMG and a full restore want. Sorting wants one: a dual-probe
-    session expands ~384 GB per probe plus the DAQ stream, so sorting one probe was paying
-    for three streams and the two it never read dominated the job. Unselected streams are
-    reported in ``SessionResult.skipped``.
+    session expands ~384 GB per probe plus the DAQ stream, so sorting one probe was
+    paying for three streams and the two it never read dominated the job. Unselected
+    streams are reported in ``SessionResult.skipped``.
 
-    ``verify`` and ``n_threads`` are passed to :func:`decompress_cbin`; see there for why
-    verification is off by default and why a scheduled job should state its CPU allocation.
-
-    A stream name that matches nothing raises, rather than quietly producing a tree with no
-    traces in it -- the sorter would then refuse for a reason several steps from the cause.
+    ``verify`` and ``n_threads`` are passed to :func:`decompress_cbin`; see there for
+    why verification is off by default and why a scheduled job should state its CPU
+    allocation. A stream name that matches nothing raises, rather than quietly producing
+    a tree with no traces in it -- the sorter would then refuse for a reason several
+    steps from the cause.
     """
     source = Path(source).resolve()
     dest = Path(dest)
@@ -555,9 +557,9 @@ def decompress_oe_session(
         if not f.is_file() or f.suffix in {".cbin", ".ch"}:
             continue
         rel = f.relative_to(source)
-        # A skipped stream's own sidecars go with it. sample_numbers.npy and timestamps.npy
-        # are 4 GB each per stream, so copying them for streams nobody expanded is 16 GB of
-        # pure cost on a dual-probe session.
+        # A skipped stream's own sidecars go with it. sample_numbers.npy and
+        # timestamps.npy are 4 GB each per stream, so copying them for streams nobody
+        # expanded is 16 GB of pure cost on a dual-probe session.
         stream = _stream_of(rel)
         if stream is not None and stream not in keep:
             continue

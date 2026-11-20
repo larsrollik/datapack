@@ -70,8 +70,8 @@ dev = [
     "pytest-cov",
     "pre-commit",
     "mypy",
-    "datapack[ephys]",      # so the ephys engine is exercised in tests/CI
-    "datapack[histology]",  # so the histology engine + archive are exercised in tests/CI
+    "datapack-neuro[ephys]",      # so the ephys engine is exercised in tests/CI
+    "datapack-neuro[histology]",  # so the histology engine + archive are exercised in tests/CI
 ]
 docs = [
     "mkdocs-material",
