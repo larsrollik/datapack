@@ -162,7 +162,7 @@ def _compressed(tmp_path: Path) -> tuple[Path, str, str]:
 
 
 def test_decompress_expands_only_the_named_stream(tmp_path: Path) -> None:
-    """Sorting one probe must not pay to expand the others (measured: two thirds wasted)."""
+    """Sorting one probe must not expand the others (measured: two thirds wasted)."""
     packed, ap, lfp = _compressed(tmp_path)
     out = tmp_path / "restored"
 
@@ -173,7 +173,7 @@ def test_decompress_expands_only_the_named_stream(tmp_path: Path) -> None:
     cont = next(out.rglob("continuous")).resolve()
     assert (cont / ap / "continuous.dat").exists()
     assert not (cont / lfp / "continuous.dat").exists()
-    # the skipped stream's own sidecars go with it -- these are 4 GB files in the real tree
+    # the skipped stream's own sidecars go with it: 4 GB files in the real tree
     assert not (cont / lfp / "timestamps.npy").exists()
     assert (cont / ap / "timestamps.npy").exists()
     # session-level sidecars are kept regardless of stream selection
@@ -181,7 +181,7 @@ def test_decompress_expands_only_the_named_stream(tmp_path: Path) -> None:
 
 
 def test_decompress_narrows_structure_oebin(tmp_path: Path) -> None:
-    """neo memmaps every oebin 'continuous' entry on open, so a stale one breaks the open."""
+    """neo memmaps every oebin 'continuous' entry on open; a stale one breaks it."""
     packed, ap, lfp = _compressed(tmp_path)
     out = tmp_path / "restored"
 
@@ -205,7 +205,7 @@ def test_decompress_all_streams_leaves_oebin_alone(tmp_path: Path) -> None:
 
 
 def test_decompress_unknown_stream_raises(tmp_path: Path) -> None:
-    """Refuse loudly; a tree with no traces makes the sorter refuse far from the cause."""
+    """Refuse loudly: a tree with no traces fails the sorter far from the cause."""
     packed, ap, _ = _compressed(tmp_path)
 
     with pytest.raises(EphysMetaError, match="no such stream"):
