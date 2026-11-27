@@ -46,10 +46,22 @@ from datapack.engines.ephys import (  # noqa: E402
     session_stream_meta,
 )
 
-try:
-    __version__ = version("datapack")
-except PackageNotFoundError:  # pragma: no cover
-    __version__ = "unknown"
+
+def _installed_version() -> str:
+    """Version of the installed distribution.
+
+    The distribution is published as ``datapack-neuro`` (the import name stays
+    ``datapack``); older local installs may still carry the name ``datapack``.
+    """
+    for dist in ("datapack-neuro", "datapack"):
+        try:
+            return version(dist)
+        except PackageNotFoundError:
+            continue
+    return "unknown"  # pragma: no cover
+
+
+__version__ = _installed_version()
 
 # Name used in the design docs for the result of a compress operation.
 CompressResult = ManifestRecord
