@@ -217,3 +217,11 @@ def test_config_defaults() -> None:
     assert DEFAULT_CONFIG.ephys.codec == "mtscomp"
     assert DEFAULT_CONFIG.video.qp == 20
     assert DEFAULT_CONFIG.histology.codec == "deflate"
+
+
+def test_installed_version_is_known():
+    """The version comes from the installed distribution, not a fallback."""
+    import datapack
+
+    assert datapack.__version__ != "unknown"
+    assert datapack.__version__[0].isdigit()
