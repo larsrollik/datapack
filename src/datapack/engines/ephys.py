@@ -26,7 +26,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from datapack.core.atomic import atomic_write, atomic_write_many
 from datapack.core.detect import register_engine
@@ -133,6 +133,83 @@ def _sha1_file(path: Path) -> str:
     return h.hexdigest()
 
 
+#: How long a refused write is retried before giving up (s), and the first back-off.
+WRITE_RETRY_BUDGET_S = 600.0
+WRITE_RETRY_FIRST_S = 0.05
+
+
+class _RetryingWriter:
+    """A binary file whose ``write``/``flush`` retry when the filesystem says "not now".
+
+    CephFS can answer a write with EAGAIN under load. Python raises that as
+    ``BlockingIOError``, with ``characters_written`` saying how much of the buffer it
+    did accept, and mtscomp does not catch it: a 473 GB stream died at 37% and again
+    at 49%, two hours in each time. EAGAIN means "try again", so
+    this does -- it resends only the bytes not yet taken, backing off for up to
+    ``WRITE_RETRY_BUDGET_S`` before re-raising. mtscomp's ``check_after_compress``
+    still decompresses and byte-compares the result, so a bad retry cannot pass.
+    """
+
+    def __init__(self, handle: Any, budget_s: float = WRITE_RETRY_BUDGET_S) -> None:
+        self._handle = handle
+        self._budget_s = budget_s
+        self.retries = 0
+
+    def _retry(self, attempt: Any) -> Any:
+        import time
+
+        delay, waited = WRITE_RETRY_FIRST_S, 0.0
+        while True:
+            try:
+                return attempt()
+            except BlockingIOError:
+                if waited >= self._budget_s:
+                    raise
+                self.retries += 1
+                time.sleep(delay)
+                waited += delay
+                delay = min(delay * 2, 5.0)
+
+    def write(self, data: Any) -> int:
+        view = memoryview(data).cast("B")
+        done = 0
+
+        def attempt() -> int:
+            nonlocal done
+            while done < len(view):
+                try:
+                    done += self._handle.write(view[done:])
+                except BlockingIOError as exc:
+                    done += exc.characters_written
+                    raise
+            return done
+
+        return int(self._retry(attempt))
+
+    def flush(self) -> None:
+        self._retry(self._handle.flush)
+
+    def close(self) -> None:
+        self.flush()
+        self._handle.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._handle, name)
+
+
+def _retrying_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+    """``open`` for mtscomp's namespace: binary write modes get a retrying writer."""
+    handle = Path(file).open(mode, *args, **kwargs)  # noqa: SIM115 - wrapper owns it
+    writing = "b" in mode and any(m in mode for m in "wax+")
+    return _RetryingWriter(handle) if writing else handle
+
+
 def _lazy_mtscomp() -> Any:
     try:
         import mtscomp
@@ -143,6 +220,9 @@ def _lazy_mtscomp() -> Any:
         ) from exc
     # mtscomp is chatty (INFO logs); keep library use quiet.
     logging.getLogger("mtscomp").setLevel(logging.WARNING)
+    # mtscomp writes through the builtin ``open``. A module-level name shadows the
+    # builtin for mtscomp's own lookups only, so nothing outside mtscomp changes.
+    mtscomp.open = _retrying_open
     return mtscomp
 
 
